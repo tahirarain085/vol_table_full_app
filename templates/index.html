@@ -1,0 +1,248 @@
+{% extends "base.html" %}
+
+{% block topbar_actions %}
+  <a class="btn btn-light" href="{{ url_for('download_excel') }}">Download all beats (Excel)</a>
+{% endblock %}
+
+{% block content %}
+  <main class="layout">
+
+    <!-- ================= Entry panel ================= -->
+    <aside class="entry">
+
+      <section class="card">
+        <h2>1. Beat</h2>
+        {% if current_beat %}
+          <p class="beat-now">Entering trees for<strong>{{ current_beat }}</strong></p>
+        {% endif %}
+        <form method="POST" action="{{ url_for('set_beat') }}">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <div class="field">
+            <label for="beat_name">{{ 'Switch to another beat' if current_beat else 'Beat name' }}</label>
+            <input type="text" id="beat_name" name="beat_name" list="beat-list" maxlength="100"
+                   placeholder="Pick from the list or type a new beat" autocomplete="off" required>
+            <datalist id="beat-list">
+              {% for b in beats %}<option value="{{ b }}">{% endfor %}
+            </datalist>
+          </div>
+          <button type="submit" class="btn btn-outline btn-block">{{ 'Change beat' if current_beat else 'Set beat' }}</button>
+        </form>
+      </section>
+
+      <section class="card">
+        <h2 id="tree-card">{{ 'Edit tree' if edit_tree else '2. Tree details' }}</h2>
+
+        {% with messages = get_flashed_messages(with_categories=true) %}
+          {% for category, message in messages %}
+            <div class="msg {{ category }}" role="status" style="margin-bottom:12px">{{ message }}</div>
+          {% endfor %}
+        {% endwith %}
+        {% if error %}
+          <div class="msg error" role="alert" style="margin-bottom:12px">{{ error }}</div>
+        {% endif %}
+
+        {% if current_beat or edit_tree %}
+        {% if edit_tree %}
+          <div class="editing-note">Editing tree no <strong>{{ edit_tree.tree_no }}</strong> in {{ edit_beat.name }}. Dia, cft and shi unit are updated from the girth and kind.</div>
+        {% endif %}
+        <form method="POST" id="tree-form"{% if edit_tree %} action="{{ url_for('update_tree', beat_id=edit_beat.id, tree_id=edit_tree.id) }}"{% endif %}>
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <div class="two">
+            <div class="field">
+              <label for="tree_no">Tree no</label>
+              <input type="text" id="tree_no" name="tree_no" maxlength="50" autofocus
+                     value="{{ form.get('tree_no', '') }}" required>
+            </div>
+            <div class="field">
+              <label for="km_burji_no">KM/RD No</label>
+              <input type="text" id="km_burji_no" name="km_burji_no" maxlength="50"
+                     value="{{ form.get('km_burji_no', '') }}" required>
+            </div>
+          </div>
+
+          <div class="two">
+            <div class="field">
+              <label for="kind_tree">Tree kind</label>
+              <select id="kind_tree" name="kind_tree" required>
+                <option value="">Select kind</option>
+                {% for k in kinds %}
+                  <option value="{{ k }}" {% if form.get('kind_tree') == k %}selected{% endif %}>{{ k|capitalize }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="field">
+              <label for="girth">Girth</label>
+              <input type="number" id="girth" name="girth" min="1" inputmode="numeric"
+                     value="{{ form.get('girth', '') }}" required>
+            </div>
+          </div>
+
+          <div class="preview" id="preview" aria-live="polite">
+            Choose a kind and enter the girth to see dia, cft and shi unit.
+          </div>
+
+          <div class="field">
+            <label for="remarks">Remarks <span class="hint">(optional)</span></label>
+            <textarea id="remarks" name="remarks" maxlength="255">{{ form.get('remarks', '') or '' }}</textarea>
+          </div>
+
+          {% if edit_tree %}
+          <div class="btn-row">
+            <button type="submit" class="btn btn-primary btn-block">Update tree</button>
+            <a class="btn btn-outline" href="{{ url_for('index') }}">Cancel</a>
+          </div>
+          {% else %}
+          <button type="submit" class="btn btn-primary btn-block">Save tree</button>
+          {% endif %}
+        </form>
+        {% else %}
+          <p class="hint" style="margin:0;color:var(--muted)">Set a beat first. Every tree you save will be recorded under it.</p>
+        {% endif %}
+      </section>
+
+    </aside>
+
+    <!-- ================= Register ================= -->
+    <section>
+      <div class="register-head">
+        <h2>Register by beat</h2>
+      </div>
+
+      {% for s in sections %}
+      <details class="sheet" open>
+        <summary>
+          <h2>Beat: {{ s.beat }}</h2>
+          <span class="tag">{{ s.abstract.trees }} tree{{ '' if s.abstract.trees == 1 else 's' }}</span>
+          {% if s.beat == current_beat %}<span class="tag live">Entering now</span>{% endif %}
+        </summary>
+
+        <div class="toolbar">
+          <span>In order of entry: first tree on top</span>
+          <a class="btn btn-outline" href="{{ url_for('download_excel', beat=s.beat) }}">Download this beat (Excel)</a>
+        </div>
+
+        <div class="scroll"{% if s.beat == current_beat %} id="current-scroll"{% endif %}>
+          <table class="entries">
+            <thead>
+              <tr>
+                <th>ID</th><th>Tree no</th><th>KM/RD No</th><th>Kind</th>
+                <th class="num">Girth</th><th class="num">Dia</th><th class="num">CFT</th><th class="num">Shi unit</th><th>Remarks</th><th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for t in s.trees %}
+              <tr{% if edit_tree and edit_beat and edit_beat.id == s.id and edit_tree.id == t.id %} class="editing"{% endif %}>
+                <td>{{ t.id }}</td>
+                <td>{{ t.tree_no }}</td>
+                <td>{{ t.km_burji_no }}</td>
+                <td>{{ t.kind_tree|capitalize }}</td>
+                <td class="num">{{ t.girth }}</td>
+                <td class="num">{{ t.dia }}</td>
+                <td class="num">{{ t.cft }}</td>
+                <td class="num">{{ t.shi_unit }}</td>
+                <td class="remarks">{{ t.remarks or '' }}</td>
+                <td>
+                  <div class="actions">
+                    <a class="mini" href="{{ url_for('index', edit=t.id, beat=s.id) }}#tree-card">Edit</a>
+                    <form method="POST" action="{{ url_for('delete_tree', beat_id=s.id, tree_id=t.id) }}"
+                          data-confirm="Delete tree no {{ t.tree_no }} ({{ t.kind_tree|capitalize }}, km / RD / burji no {{ t.km_burji_no }})? This cannot be undone.">
+                      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                      <button type="submit" class="mini danger">Delete</button>
+                    </form>
+                  </div>
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Abstract for this beat -->
+        <div class="abstract">
+          <h3>Abstract: {{ s.beat }}</h3>
+          <table class="ledger">
+            <thead>
+              <tr><th>No. of trees</th><th>Kind</th><th class="num">CFT</th><th class="num">Shi unit</th></tr>
+            </thead>
+            <tbody>
+              {% for r in s.abstract.rows %}
+              <tr>
+                <td>{{ r.trees }}</td>
+                <td>{{ r.kind|capitalize }}</td>
+                <td class="num">{{ '%.2f'|format(r.cft) }}</td>
+                <td class="num">{{ '%.2f'|format(r.shi_unit) }}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+            <tfoot>
+              <tr>
+                <td>{{ s.abstract.trees }}</td>
+                <td>Total</td>
+                <td class="num">{{ '%.2f'|format(s.abstract.cft) }}</td>
+                <td class="num">{{ '%.2f'|format(s.abstract.shi_unit) }}</td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      </details>
+      {% else %}
+      <div class="empty">
+        <strong>No trees recorded yet</strong>
+        Set a beat, then add the first tree. The register and its abstract will appear here.
+      </div>
+      {% endfor %}
+    </section>
+  </main>
+{% endblock %}
+
+{% block scripts %}
+  <script>
+    // Keep the newest entry in view: scroll the current beat's table to its last row
+    (function () {
+      var box = document.getElementById("current-scroll");
+      if (box) box.scrollTop = box.scrollHeight;
+    })();
+
+    // Ask before deleting
+    document.querySelectorAll("form[data-confirm]").forEach(function (f) {
+      f.addEventListener("submit", function (e) {
+        if (!confirm(f.dataset.confirm)) e.preventDefault();
+      });
+    });
+
+    // Live preview of the values that will be saved for the chosen kind and girth
+    (function () {
+      var volume = {{ volume|tojson }};
+      var kind = document.getElementById("kind_tree");
+      var girth = document.getElementById("girth");
+      var box = document.getElementById("preview");
+      if (!kind || !girth || !box) return;
+
+      var idle = box.textContent.trim();
+
+      function update() {
+        var k = kind.value, g = parseInt(girth.value, 10);
+        box.className = "preview";
+        if (!k || isNaN(g)) { box.textContent = idle; return; }
+
+        var v = volume[k + "|" + g];
+        if (!v) {
+          box.className = "preview missing";
+          box.textContent = "No volume data for " + k + " with girth " + g + ".";
+          return;
+        }
+        box.className = "preview found";
+        box.innerHTML =
+          "<dl>" +
+          "<div><dt>Dia</dt><dd>" + v.dia + "</dd></div>" +
+          "<div><dt>CFT</dt><dd>" + v.cft + "</dd></div>" +
+          "<div><dt>Shi unit</dt><dd>" + v.shi_unit + "</dd></div>" +
+          "</dl>";
+      }
+
+      kind.addEventListener("change", update);
+      girth.addEventListener("input", update);
+      update();
+    })();
+  </script>
+{% endblock %}
