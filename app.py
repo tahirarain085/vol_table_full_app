@@ -1,29 +1,37 @@
-"""Tree enumeration register (Flask + SQLAlchemy + MySQL on Aiven).
+"""Tree enumeration register (Flask + SQLAlchemy + MySQL on Aiven) with user accounts.
 
 Run locally:   python app.py
 Production:    gunicorn app:app
 """
+import hmac
 import os
 import re
+import secrets
 import ssl
 import tempfile
+import time
 import uuid
 from collections import defaultdict
 from datetime import datetime
+from functools import wraps
 from io import BytesIO
 from urllib.parse import parse_qsl, quote_plus, urlencode, urlsplit, urlunsplit
 
 from dotenv import load_dotenv
 from flask import (
-    Flask, flash, redirect, render_template, request, send_file, session, url_for,
+    Flask, abort, flash, g, redirect, render_template, render_template_string,
+    request, send_file, session, url_for,
 )
 from flask_sqlalchemy import SQLAlchemy
+from markupsafe import escape
 from openpyxl import Workbook
 from openpyxl.styles import Border, Font, Side
 from sqlalchemy import func, inspect, text
 from sqlalchemy.exc import IntegrityError, OperationalError
-from markupsafe import escape
 from werkzeug.exceptions import HTTPException
+from werkzeug.middleware.proxy_fix import ProxyFix
+from werkzeug.security import check_password_hash, generate_password_hash
+
 from volume_data import RANGES
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -66,25 +74,23 @@ def build_database_config():
         if not any(k == "charset" for k, _ in query):
             query.append(("charset", "utf8mb4"))
         url = urlunsplit(parts._replace(query=urlencode(query)))
-        mysql = True
     else:
         host = (os.getenv("DB_HOST") or "").strip()
         if not host:
             print("[database] No DB_HOST or DATABASE_URL set: using local SQLite file trees_local.db")
             return f"sqlite:///{os.path.join(BASE_DIR, 'trees_local.db')}", {}
-        user = (os.getenv("DB_USERNAME") or "").strip()
-        password = quote_plus(os.getenv("DB_PASSWORD") or "")
-        port = (os.getenv("DB_PORT") or "3306").strip()
-        name = (os.getenv("DB_NAME") or "").strip()
-        url = f"mysql+pymysql://{user}:{password}@{host}:{port}/{name}?charset=utf8mb4"
-        mysql = True
+        DB_USERNAME = (os.getenv("DB_USERNAME") or "").strip()
+        DB_PASSWORD = quote_plus(os.getenv("DB_PASSWORD") or "")
+        DB_HOST= (os.getenv("DB_HOST") or "").strip()
+        DB_PORT = (os.getenv("DB_PORT") or "3306").strip()
+        DB_NAME = (os.getenv("DB_NAME") or "").strip()
+        url = f"mysql+pymysql://{DB_USERNAME}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}?charset=utf8mb4"
 
     options = {"pool_pre_ping": True, "pool_recycle": 280, "connect_args": _mysql_ssl_args()}
     return url, options
 
 
 app = Flask(__name__)
-## app.config["SECRET_KEY"] = os.getenv("SECRET_KEY")
 
 SECRET_KEY = os.getenv("SECRET_KEY")
 if not SECRET_KEY:
@@ -92,15 +98,6 @@ if not SECRET_KEY:
 app.config["SECRET_KEY"] = SECRET_KEY
 app.config["SQLALCHEMY_DATABASE_URI"], app.config["SQLALCHEMY_ENGINE_OPTIONS"] = build_database_config()
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
-
-db = SQLAlchemy(app)
-
-
-# ---------------------------------------------------------------------------
-# Beat names for the dropdown. Replace these with your real beat names.
-# The user can pick one of them OR type a new name. Any new name that is saved
-# is remembered and shown in the list next time automatically.
-# ---------------------------------------------------------------------------
 
 # Sign-in cookie: not readable by scripts, not sent from other sites, HTTPS only on Render
 ON_RENDER = bool(os.getenv("RENDER"))
