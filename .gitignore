@@ -16,3 +16,4 @@ __pycache__/
 
 # SSL private certificates
 *.pem
+ca.pem

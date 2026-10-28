@@ -74,20 +74,22 @@ def build_database_config():
         if not any(k == "charset" for k, _ in query):
             query.append(("charset", "utf8mb4"))
         url = urlunsplit(parts._replace(query=urlencode(query)))
+        mysql = True
     else:
-        host = (os.getenv("DB_HOST") or "").strip()
-        if not host:
+        DB_HOST = (os.getenv("DB_HOST") or "").strip()
+        if not DB_HOST:
             print("[database] No DB_HOST or DATABASE_URL set: using local SQLite file trees_local.db")
             return f"sqlite:///{os.path.join(BASE_DIR, 'trees_local.db')}", {}
         DB_USERNAME = (os.getenv("DB_USERNAME") or "").strip()
         DB_PASSWORD = quote_plus(os.getenv("DB_PASSWORD") or "")
-        DB_HOST= (os.getenv("DB_HOST") or "").strip()
         DB_PORT = (os.getenv("DB_PORT") or "3306").strip()
         DB_NAME = (os.getenv("DB_NAME") or "").strip()
         url = f"mysql+pymysql://{DB_USERNAME}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}?charset=utf8mb4"
+        mysql = True
 
     options = {"pool_pre_ping": True, "pool_recycle": 280, "connect_args": _mysql_ssl_args()}
     return url, options
+
 
 
 app = Flask(__name__)
