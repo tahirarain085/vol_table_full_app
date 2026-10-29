@@ -78,6 +78,10 @@ def build_database_config():
     else:
         DB_HOST = (os.getenv("DB_HOST") or "").strip()
         if not DB_HOST:
+            if os.getenv("RENDER"):
+                raise RuntimeError(
+                    "No DATABASE_URL / DB_HOST set on Render. Refusing to use temporary SQLite."
+                )
             print("[database] No DB_HOST or DATABASE_URL set: using local SQLite file trees_local.db")
             return f"sqlite:///{os.path.join(BASE_DIR, 'trees_local.db')}", {}
         DB_USERNAME = (os.getenv("DB_USERNAME") or "").strip()
