@@ -15,5 +15,4 @@ __pycache__/
 *.db
 
 # SSL private certificates
-*.pem
-ca.pem
+
